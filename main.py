@@ -18,7 +18,7 @@ user_cards = {}
 
 # Настройка LangChain с OpenAI
 llm = ChatOpenAI(
-    model="gpt-4o-mini",
+    model="gpt-4o",
     temperature=0
 )
 
@@ -34,9 +34,13 @@ prompt_template = ChatPromptTemplate.from_messages([
 1. Перевод слова/фразы
 2. 3 примера использования этого слова в предложениях с переводом
 
+ВАЖНО! Порядок в примерах:
+- Если исходный текст на АНГЛИЙСКОМ - пиши примеры: [английский пример] - [русский перевод]
+- Если исходный текст на РУССКОМ - пиши примеры: [русский пример] - [английский перевод]
+
 Требования:
 1. Не используй кавычки и скобки.
-2. В примерах СТРОГО пиши сначала на исходном языке, а потом на языке перевода.
+2. В примерах ВСЕГДА первым идет пример на языке исходного текста "{text}", вторым - его перевод.
 
 Ответь в следующем формате:
 Перевод: [перевод]
@@ -249,11 +253,16 @@ def handle_add_to_anki(call: CallbackQuery):
             else:
                 translation = parts.strip()
 
+        # Создаем уникальное имя колоды для пользователя
+        user_id = card_data['user_id']
+        user_name = call.from_user.first_name or f"User{user_id}"
+        deck_name = f"Vocabulary Bot - {user_name}"
+
         # Добавляем карточку напрямую в Anki
         image_filename = f"vocab_{message_id}.jpg" if card_data['image_url'] else None
 
         anki.add_note(
-            deck_name="Vocabulary Bot",
+            deck_name=deck_name,
             word=card_data['word'],
             translation=translation if translation else ai_text,
             examples=examples,
