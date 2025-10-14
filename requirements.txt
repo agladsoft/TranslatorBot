@@ -1,0 +1,6 @@
+requests
+pyTelegramBotAPI==4.29.1
+python-dotenv==1.0.0
+openai==1.77.0
+langchain==0.3.27
+langchain-openai==0.3.16
