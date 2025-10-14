@@ -34,6 +34,10 @@ prompt_template = ChatPromptTemplate.from_messages([
 1. Перевод слова/фразы
 2. 3 примера использования этого слова в предложениях с переводом
 
+Требования:
+1. Не используй кавычки и скобки.
+2. В примерах СТРОГО пиши сначала на исходном языке, а потом на языке перевода.
+
 Ответь в следующем формате:
 Перевод: [перевод]
 Примеры:
@@ -259,30 +263,56 @@ def handle_add_to_anki(call: CallbackQuery):
 
         bot.answer_callback_query(call.id, "✅ Карточка добавлена в Anki!", show_alert=False)
 
-        # Запускаем синхронизацию с AnkiWeb
-        sync_status = "🔄 Синхронизация запущена..."
-        sync_msg = bot.send_message(call.message.chat.id, sync_status)
+        # Создаем новую кнопку со статусом синхронизации
+        sync_keyboard = InlineKeyboardMarkup()
+        sync_btn = InlineKeyboardButton("🔄 Синхронизация...", callback_data="syncing")
+        sync_keyboard.add(sync_btn)
 
+        # Обновляем кнопку на статус синхронизации
+        try:
+            bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=sync_keyboard
+            )
+        except:
+            pass
+
+        # Запускаем синхронизацию с AnkiWeb
         try:
             if anki.sync():
-                bot.edit_message_text(
-                    "✅ Карточка успешно добавлена и синхронизирована!\nОна доступна на всех ваших устройствах.",
+                # Заменяем кнопку на успешное сообщение
+                success_keyboard = InlineKeyboardMarkup()
+                success_btn = InlineKeyboardButton("✅ Добавлено и синхронизировано", callback_data="done")
+                success_keyboard.add(success_btn)
+                bot.edit_message_reply_markup(
                     call.message.chat.id,
-                    sync_msg.message_id
+                    call.message.message_id,
+                    reply_markup=success_keyboard
                 )
             else:
-                bot.edit_message_text(
-                    "✅ Карточка добавлена в Anki!\n⚠️ Автоматическая синхронизация не удалась. Синхронизируйте вручную.",
+                # Заменяем на сообщение с предупреждением
+                warning_keyboard = InlineKeyboardMarkup()
+                warning_btn = InlineKeyboardButton("⚠️ Добавлено (синхронизируйте вручную)", callback_data="done")
+                warning_keyboard.add(warning_btn)
+                bot.edit_message_reply_markup(
                     call.message.chat.id,
-                    sync_msg.message_id
+                    call.message.message_id,
+                    reply_markup=warning_keyboard
                 )
         except Exception as sync_error:
             print(f"Ошибка синхронизации: {sync_error}")
-            bot.edit_message_text(
-                "✅ Карточка добавлена в Anki!\n⚠️ Синхронизация не удалась. Синхронизируйте вручную.",
-                call.message.chat.id,
-                sync_msg.message_id
-            )
+            warning_keyboard = InlineKeyboardMarkup()
+            warning_btn = InlineKeyboardButton("⚠️ Добавлено (синхронизируйте вручную)", callback_data="done")
+            warning_keyboard.add(warning_btn)
+            try:
+                bot.edit_message_reply_markup(
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=warning_keyboard
+                )
+            except:
+                pass
 
         # Удаляем данные карточки
         del user_cards[message_id]
