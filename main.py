@@ -268,11 +268,11 @@ def handle_add_to_mochi(call: CallbackQuery):
                 translation = parts.strip()
 
         # Формируем front и back для Basic flashcard
-        # Front - слово
-        front_text = card_data['word']
+        # Front - слово (большой размер через заголовок)
+        front_text = f"# {card_data['word']}"
 
-        # Back - перевод и примеры
-        back_text = f"**{translation or ai_text}**"
+        # Back - перевод (большой размер) и примеры
+        back_text = f"## {translation or ai_text}"
         if examples:
             back_text += f"\n\n{examples}"
 
