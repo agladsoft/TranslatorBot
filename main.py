@@ -2,7 +2,7 @@ import os
 import telebot
 import requests
 from typing import Optional
-from anki import AnkiConnect
+from mochi_ import MochiConnect
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
@@ -160,12 +160,12 @@ def translate_word(message: Message) -> None:
         image_url = get_image_url(search_keyword)
         print(f"Получен URL изображения: {image_url}")
 
-        # Создаем кнопку для добавления в Anki
+        # Создаем кнопку для добавления в Mochi
         keyboard = InlineKeyboardMarkup()
-        add_to_anki_btn = InlineKeyboardButton("📚 Добавить в Anki", callback_data=f"add_anki_{message.message_id}")
-        keyboard.add(add_to_anki_btn)
+        add_to_mochi_btn = InlineKeyboardButton("📚 Добавить в Mochi", callback_data=f"add_mochi_{message.message_id}")
+        keyboard.add(add_to_mochi_btn)
 
-        # Сохраняем данные карточки для последующего добавления в Anki
+        # Сохраняем данные карточки для последующего добавления в Mochi
         user_cards[message.message_id] = {
             'word': text,
             'translation': ai_response,
@@ -197,21 +197,21 @@ def translate_word(message: Message) -> None:
         if loading_msg:
             try:
                 bot.delete_message(message.chat.id, loading_msg.message_id)
-            except:
-                pass
+            except Exception as e:
+                print(e)
 
     except Exception as e:
         # Удаляем GIF в случае ошибки
         if loading_msg:
             try:
                 bot.delete_message(message.chat.id, loading_msg.message_id)
-            except:
-                pass
+            except Exception as e:
+                print(e)
         bot.reply_to(message, f"Произошла ошибка при переводе: {str(e)}\nПопробуйте еще раз.")
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('add_anki_'))
-def handle_add_to_anki(call: CallbackQuery):
+@bot.callback_query_handler(func=lambda call: call.data.startswith('add_mochi_'))
+def handle_add_to_mochi(call: CallbackQuery):
     try:
         # Извлекаем message_id из callback_data
         message_id = int(call.data.split('_')[2])
@@ -222,20 +222,35 @@ def handle_add_to_anki(call: CallbackQuery):
 
         card_data = user_cards[message_id]
 
-        # Создаем подключение к AnkiConnect
-        anki = AnkiConnect()
-
-        # Проверяем подключение
-        if not anki.check_connection():
+        # Получаем API ключ из переменных окружения
+        mochi_api_key = os.getenv("MOCHI_API_KEY")
+        if not mochi_api_key:
             bot.answer_callback_query(
                 call.id,
-                "❌ Не удалось подключиться к Anki.\nУбедитесь, что Anki запущен и установлен плагин AnkiConnect.",
+                "❌ MOCHI_API_KEY не найден в .env файле",
                 show_alert=True
             )
             return
 
-        # Проверяем/создаем модель
-        anki.ensure_model_exists()
+        # Создаем подключение к Mochi
+        mochi = MochiConnect(mochi_api_key)
+
+        # Проверяем подключение
+        if not mochi.check_connection():
+            bot.answer_callback_query(
+                call.id,
+                "❌ Не удалось подключиться к Mochi.\nПроверьте API ключ.",
+                show_alert=True
+            )
+            return
+
+        # Создаем уникальное имя колоды для пользователя
+        # user_id = card_data['user_id']
+        # user_name = call.from_user.first_name or f"User{user_id}"
+        deck_name = "Test"
+
+        # Получаем или создаем колоду
+        deck_id = mochi.get_or_create_deck(deck_name)
 
         # Парсим перевод и примеры из AI ответа
         ai_text = card_data['translation']
@@ -248,92 +263,50 @@ def handle_add_to_anki(call: CallbackQuery):
             if "Примеры:" in parts:
                 translation = parts.split("Примеры:", 1)[0].strip()
                 examples_text = parts.split("Примеры:", 1)[1].strip()
-                # Форматируем примеры в список
-                examples = examples_text.replace("\n", "<br>")
+                examples = examples_text
             else:
                 translation = parts.strip()
 
-        # Создаем уникальное имя колоды для пользователя
-        user_id = card_data['user_id']
-        user_name = call.from_user.first_name or f"User{user_id}"
-        deck_name = f"Vocabulary Bot - {user_name}"
+        # Формируем front и back для Basic flashcard
+        # Front - слово
+        front_text = card_data['word']
 
-        # Добавляем карточку напрямую в Anki
-        image_filename = f"vocab_{message_id}.jpg" if card_data['image_url'] else None
+        # Back - перевод и примеры
+        back_text = f"**{translation or ai_text}**"
+        if examples:
+            back_text += f"\n\n{examples}"
 
-        anki.add_note(
-            deck_name=deck_name,
-            word=card_data['word'],
-            translation=translation if translation else ai_text,
-            examples=examples,
-            image_url=card_data['image_url'],
-            image_filename=image_filename
+        # Добавляем карточку в Mochi
+        mochi.add_card(
+            deck_id=deck_id,
+            front_text=front_text,
+            back_text=back_text,
+            image_url=card_data['image_url']
         )
 
-        bot.answer_callback_query(call.id, "✅ Карточка добавлена в Anki!", show_alert=False)
+        bot.answer_callback_query(call.id, "✅ Карточка добавлена в Mochi!", show_alert=False)
 
-        # Создаем новую кнопку со статусом синхронизации
-        sync_keyboard = InlineKeyboardMarkup()
-        sync_btn = InlineKeyboardButton("🔄 Синхронизация...", callback_data="syncing")
-        sync_keyboard.add(sync_btn)
+        # Обновляем кнопку на успешное сообщение
+        success_keyboard = InlineKeyboardMarkup()
+        success_btn = InlineKeyboardButton("✅ Добавлено в Mochi", callback_data="done")
+        success_keyboard.add(success_btn)
 
-        # Обновляем кнопку на статус синхронизации
         try:
             bot.edit_message_reply_markup(
                 call.message.chat.id,
                 call.message.message_id,
-                reply_markup=sync_keyboard
+                reply_markup=success_keyboard
             )
-        except:
-            pass
-
-        # Запускаем синхронизацию с AnkiWeb
-        try:
-            if anki.sync():
-                # Заменяем кнопку на успешное сообщение
-                success_keyboard = InlineKeyboardMarkup()
-                success_btn = InlineKeyboardButton("✅ Добавлено и синхронизировано", callback_data="done")
-                success_keyboard.add(success_btn)
-                bot.edit_message_reply_markup(
-                    call.message.chat.id,
-                    call.message.message_id,
-                    reply_markup=success_keyboard
-                )
-            else:
-                # Заменяем на сообщение с предупреждением
-                warning_keyboard = InlineKeyboardMarkup()
-                warning_btn = InlineKeyboardButton("⚠️ Добавлено (синхронизируйте вручную)", callback_data="done")
-                warning_keyboard.add(warning_btn)
-                bot.edit_message_reply_markup(
-                    call.message.chat.id,
-                    call.message.message_id,
-                    reply_markup=warning_keyboard
-                )
-        except Exception as sync_error:
-            print(f"Ошибка синхронизации: {sync_error}")
-            warning_keyboard = InlineKeyboardMarkup()
-            warning_btn = InlineKeyboardButton("⚠️ Добавлено (синхронизируйте вручную)", callback_data="done")
-            warning_keyboard.add(warning_btn)
-            try:
-                bot.edit_message_reply_markup(
-                    call.message.chat.id,
-                    call.message.message_id,
-                    reply_markup=warning_keyboard
-                )
-            except:
-                pass
+        except Exception as e:
+            print(e)
 
         # Удаляем данные карточки
         del user_cards[message_id]
 
     except Exception as e:
         error_msg = str(e)
-        print(f"Ошибка добавления в Anki: {error_msg}")
-
-        if "cannot create note because it is a duplicate" in error_msg.lower():
-            bot.answer_callback_query(call.id, "⚠️ Эта карточка уже есть в Anki", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, f"❌ Ошибка: {error_msg}", show_alert=True)
+        print(f"Ошибка добавления в Mochi: {error_msg}")
+        bot.answer_callback_query(call.id, f"❌ Ошибка: {error_msg}", show_alert=True)
 
 
 if __name__ == "__main__":

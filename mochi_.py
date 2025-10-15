@@ -1,0 +1,166 @@
+import requests
+import base64
+import uuid
+from typing import Optional
+from io import BytesIO
+from mochi.client import Mochi
+from mochi.auth import Auth
+
+
+class MochiConnect:
+    """Класс для работы с Mochi API через mochi-api-client"""
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        auth = Auth.Token(api_key)
+        self.client = Mochi(auth=auth)
+
+    def get_basic_template(self) -> Optional[dict]:
+        """Получает шаблон Basic (с полями Front и Back)"""
+        try:
+            templates = self.client.templates.list_templates()
+
+            # Ищем шаблон с именем "Basic" или первый доступный шаблон
+            for template in templates:
+                if template.get('name') and 'basic' in template['name'].lower():
+                    # Получаем полную информацию о шаблоне
+                    full_template = self.client.templates.get_template(template['id'])
+                    print(f"Найден шаблон Basic: {full_template}")
+                    return full_template
+
+            # Если не нашли Basic, возвращаем первый шаблон (если есть)
+            if templates and len(templates) > 0:
+                full_template = self.client.templates.get_template(templates[0]['id'])
+                print(f"Используем первый шаблон: {full_template}")
+                return full_template
+
+            return None
+        except Exception as e:
+            print(f"Ошибка получения шаблонов: {e}")
+            return None
+
+    def get_or_create_deck(self, deck_name: str) -> str:
+        """Получает или создает колоду по имени и возвращает deck_id"""
+        # Получаем список всех колод
+        decks = self.client.decks.list_decks()
+
+        # Ищем колоду с нужным именем
+        for deck in decks:
+            if deck.get('name') == deck_name:
+                return deck['id']
+
+        # Если не найдена, создаем новую
+        new_deck = self.client.decks.create_deck(name=deck_name)
+        return new_deck['id']
+
+    def upload_attachment(self, card_id: str, filename: str, file_data: bytes) -> bool:
+        """Загружает вложение к карточке через API эндпоинт"""
+        try:
+            url = f"https://app.mochi.cards/api/cards/{card_id}/attachments/{filename}"
+
+            # Создаем multipart/form-data запрос точно как в curl примере
+            # -F file="@/path/to/file" соответствует files={'file': ...}
+            files = {'file': file_data}
+
+            # Используем requests.post с HTTP Basic Auth (api_key как username, пустой password)
+            # Не указываем Content-Type явно - requests сам установит multipart/form-data с boundary
+            response = requests.post(
+                url,
+                files=files,
+                auth=(self.api_key, ''),
+                timeout=30
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            print(f"Ошибка загрузки вложения: {e}")
+            if hasattr(e, 'response'):
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response body: {e.response.text}")
+            return False
+
+    def add_card(self, deck_id: str, front_text: str, back_text: str, image_url: Optional[str] = None) -> dict:
+        """Добавляет карточку в Mochi с front и back полями"""
+
+        # Получаем шаблон Basic
+        template = self.get_basic_template()
+
+        if template:
+            template_id = template['id']
+
+            # Получаем ID полей из шаблона
+            fields_info = template.get('fields', {})
+            print(f"Поля шаблона: {fields_info}")
+
+            # Ищем ID полей "front" и "back" (или похожие)
+            front_field_id = None
+            back_field_id = None
+
+            for field_id, field_data in fields_info.items():
+                field_name = field_data.get('name', '').lower()
+                if 'front' in field_name or field_name == 'name':
+                    front_field_id = field_id
+                elif 'back' in field_name:
+                    back_field_id = field_id
+
+            print(f"Front field ID: {front_field_id}, Back field ID: {back_field_id}")
+
+            # Формируем поля карточки
+            card_fields = {}
+            if front_field_id:
+                card_fields[front_field_id] = {
+                    "id": front_field_id,
+                    "value": front_text
+                }
+            if back_field_id:
+                card_fields[back_field_id] = {
+                    "id": back_field_id,
+                    "value": back_text
+                }
+
+            # Создаем карточку с полями
+            card = self.client.cards.create_card(
+                content="",  # content не используется при работе с полями
+                deck_id=deck_id,
+                template_id=template_id,
+                fields=card_fields
+            )
+        else:
+            # Если шаблон не найден, создаем обычную карточку
+            content = f"{front_text}\n---\n{back_text}"
+            card = self.client.cards.create_card(content=content, deck_id=deck_id)
+
+        print(f"Карточка создана: {card.get('id')}")
+
+        # TODO: Пока убираем изображения, чтобы сначала заработал текст
+        # if image_url and card:
+        #     try:
+        #         # Скачиваем изображение
+        #         img_response = requests.get(image_url, timeout=10)
+        #         img_response.raise_for_status()
+        #
+        #         # Генерируем уникальное имя файла
+        #         card_id = card['id']
+        #         filename = f"{uuid.uuid4().hex[:8]}.jpg"
+        #
+        #         # Загружаем вложение
+        #         if self.upload_attachment(card_id, filename, img_response.content):
+        #             print(f"Изображение успешно добавлено: {filename}")
+        #
+        #     except Exception as e:
+        #         print(f"Ошибка добавления изображения: {e}")
+
+        return card
+
+    def check_connection(self) -> bool:
+        """Проверяет подключение к Mochi API"""
+        try:
+            self.client.decks.list_decks()
+            return True
+        except Exception as e:
+            print(f"Ошибка подключения к Mochi: {e}")
+            return False
+
+    def close(self):
+        """Закрывает соединение"""
+        self.client.close()

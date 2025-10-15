@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем файлы приложения
 COPY main.py .
-COPY anki.py .
+COPY mochi_.py .
 
 # Запускаем бота
 CMD ["python", "main.py"]
