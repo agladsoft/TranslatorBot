@@ -85,6 +85,10 @@ class MochiConnect:
         # Получаем шаблон Basic
         template = self.get_basic_template()
 
+        # Инициализируем переменные
+        front_field_id = None
+        back_field_id = None
+
         if template:
             template_id = template['id']
 
@@ -93,9 +97,6 @@ class MochiConnect:
             print(f"Поля шаблона: {fields_info}")
 
             # Ищем ID полей "front" и "back" (или похожие)
-            front_field_id = None
-            back_field_id = None
-
             for field_id, field_data in fields_info.items():
                 field_name = field_data.get('name', '').lower()
                 if 'front' in field_name or field_name == 'name':
@@ -132,23 +133,41 @@ class MochiConnect:
 
         print(f"Карточка создана: {card.get('id')}")
 
-        # TODO: Пока убираем изображения, чтобы сначала заработал текст
-        # if image_url and card:
-        #     try:
-        #         # Скачиваем изображение
-        #         img_response = requests.get(image_url, timeout=10)
-        #         img_response.raise_for_status()
-        #
-        #         # Генерируем уникальное имя файла
-        #         card_id = card['id']
-        #         filename = f"{uuid.uuid4().hex[:8]}.jpg"
-        #
-        #         # Загружаем вложение
-        #         if self.upload_attachment(card_id, filename, img_response.content):
-        #             print(f"Изображение успешно добавлено: {filename}")
-        #
-        #     except Exception as e:
-        #         print(f"Ошибка добавления изображения: {e}")
+        # Если есть изображение, загружаем его как вложение
+        if image_url and card:
+            try:
+                # Скачиваем изображение
+                img_response = requests.get(image_url, timeout=10)
+                img_response.raise_for_status()
+
+                # Генерируем уникальное имя файла
+                card_id = card['id']
+                filename = f"{uuid.uuid4().hex[:8]}.jpg"
+
+                # Загружаем вложение
+                if self.upload_attachment(card_id, filename, img_response.content):
+                    # Обновляем front поле, добавив ссылку на изображение
+                    if template and front_field_id:
+                        # Добавляем изображение в начало front текста
+                        updated_front = f"![](@media/{filename})\n\n{front_text}"
+
+                        # Обновляем поле через update_card
+                        updated_fields = card.get('fields', {})
+                        if front_field_id in updated_fields:
+                            updated_fields[front_field_id]['value'] = updated_front
+
+                        self.client.cards.update_card(card_id=card_id, fields=updated_fields)
+                        print(f"Изображение успешно добавлено в front: {filename}")
+                    else:
+                        # Для карточек без шаблона обновляем content
+                        current_card = self.client.cards.get_card(card_id)
+                        current_content = current_card.get('content', '')
+                        updated_content = f"![](@media/{filename})\n\n{current_content}"
+                        self.client.cards.update_card(card_id=card_id, content=updated_content)
+                        print(f"Изображение успешно добавлено: {filename}")
+
+            except Exception as e:
+                print(f"Ошибка добавления изображения: {e}")
 
         return card
 
