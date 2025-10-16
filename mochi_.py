@@ -151,18 +151,25 @@ class MochiConnect:
                 }
 
             # Создаем карточку с полями
-            card = self.client.cards.create_card(
-                content="",  # content не используется при работе с полями
-                deck_id=deck_id,
-                template_id=template_id,
-                fields=card_fields
-            )
+            print(f"Создание карточки с полями: {card_fields}")
+            try:
+                card = self.client.cards.create_card(
+                    content="",  # content не используется при работе с полями
+                    deck_id=deck_id,
+                    template_id=template_id,
+                    fields=card_fields
+                )
+                print(f"Карточка успешно создана с ID: {card.get('id')}")
+                print(f"Полный ответ: {card}")
+            except Exception as e:
+                print(f"Ошибка создания карточки с полями: {e}")
+                raise
         else:
             # Если шаблон не найден, создаем обычную карточку
             content = f"{front_text}\n---\n{back_text}"
+            print(f"Создание карточки без шаблона с контентом: {content}")
             card = self.client.cards.create_card(content=content, deck_id=deck_id)
-
-        print(f"Карточка создана: {card.get('id')}")
+            print(f"Карточка создана: {card.get('id')}")
 
         # Если есть изображение, загружаем его как вложение
         if image_url and card:
