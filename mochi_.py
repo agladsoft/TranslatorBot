@@ -1,10 +1,8 @@
-import requests
-import base64
 import uuid
-from typing import Optional
-from io import BytesIO
-from mochi.client import Mochi
+import requests
 from mochi.auth import Auth
+from typing import Optional
+from mochi.client import Mochi
 
 
 class MochiConnect:
