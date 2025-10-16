@@ -245,9 +245,9 @@ def handle_add_to_mochi(call: CallbackQuery):
             return
 
         # Создаем уникальное имя колоды для пользователя
-        # user_id = card_data['user_id']
-        # user_name = call.from_user.first_name or f"User{user_id}"
-        deck_name = "Test"
+        user_id = card_data['user_id']
+        user_name = call.from_user.first_name or f"User{user_id}"
+        deck_name = f"Vocabulary Bot - {user_name}"
 
         # Получаем или создаем колоду
         deck_id = mochi.get_or_create_deck(deck_name)
