@@ -276,6 +276,27 @@ def handle_add_to_mochi(call: CallbackQuery):
         if examples:
             back_text += f"\n\n{examples}"
 
+        # Проверяем, существует ли уже такая карточка
+        if mochi.card_exists(deck_id, front_text):
+            bot.answer_callback_query(call.id, "⚠️ Такая карточка уже существует в Mochi!", show_alert=True)
+
+            # Обновляем кнопку на статус "уже существует"
+            exists_keyboard = InlineKeyboardMarkup()
+            exists_btn = InlineKeyboardButton("⚠️ Карточка уже существует", callback_data="done")
+            exists_keyboard.add(exists_btn)
+            try:
+                bot.edit_message_reply_markup(
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=exists_keyboard
+                )
+            except Exception as e:
+                print(e)
+
+            # Удаляем данные карточки
+            del user_cards[message_id]
+            return
+
         # Добавляем карточку в Mochi
         mochi.add_card(
             deck_id=deck_id,

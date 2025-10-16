@@ -51,6 +51,39 @@ class MochiConnect:
         new_deck = self.client.decks.create_deck(name=deck_name)
         return new_deck['id']
 
+    def card_exists(self, deck_id: str, front_text: str) -> bool:
+        """Проверяет, существует ли карточка с таким front текстом в колоде"""
+        try:
+            # Получаем все карточки из колоды
+            cards = self.client.cards.list_cards(deck_id=deck_id)
+
+            # Нормализуем искомый текст (убираем markdown заголовки и пробелы)
+            normalized_search = front_text.replace('#', '').strip().lower()
+
+            # Проверяем каждую карточку
+            for card in cards:
+                # Проверяем в полях
+                fields = card.get('fields', {})
+                for field_id, field_data in fields.items():
+                    field_value = field_data.get('value', '')
+                    normalized_field = field_value.replace('#', '').strip().lower()
+                    if normalized_search in normalized_field or normalized_field in normalized_search:
+                        print(f"Найдена существующая карточка: {card.get('id')}")
+                        return True
+
+                # Также проверяем content для карточек без шаблона
+                content = card.get('content', '')
+                normalized_content = content.replace('#', '').strip().lower()
+                if normalized_search in normalized_content:
+                    print(f"Найдена существующая карточка (по content): {card.get('id')}")
+                    return True
+
+            return False
+        except Exception as e:
+            print(f"Ошибка проверки дубликатов: {e}")
+            # В случае ошибки разрешаем создание карточки
+            return False
+
     def upload_attachment(self, card_id: str, filename: str, file_data: bytes) -> bool:
         """Загружает вложение к карточке через API эндпоинт"""
         try:
