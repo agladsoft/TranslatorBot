@@ -7,10 +7,13 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
-from telebot.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from telebot.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Update
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 
+app = FastAPI()
 bot = telebot.TeleBot(os.environ["TOKEN"])
 
 # Хранилище для временных данных карточек
@@ -330,5 +333,41 @@ def handle_add_to_mochi(call: CallbackQuery):
         bot.answer_callback_query(call.id, f"❌ Ошибка: {error_msg}", show_alert=True)
 
 
-if __name__ == "__main__":
-    bot.infinity_polling()
+# FastAPI endpoints
+@app.get("/")
+async def root():
+    return {"status": "Bot is running"}
+
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    """Обработка webhook от Telegram"""
+    try:
+        json_data = await request.json()
+        update = telebot.types.Update.de_json(json_data)
+        bot.process_new_updates([update])
+        return Response(status_code=200)
+    except Exception as e:
+        print(f"Error processing webhook: {e}")
+        return Response(status_code=500)
+
+
+@app.get("/set-webhook")
+async def set_webhook():
+    """Установка webhook URL"""
+    webhook_url = os.getenv("WEBHOOK_URL")
+    if not webhook_url:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "WEBHOOK_URL not set in environment"}
+        )
+
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{webhook_url}/webhook")
+        return {"status": "Webhook set successfully", "url": webhook_url}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
