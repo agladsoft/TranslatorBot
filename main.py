@@ -1,15 +1,23 @@
 import os
+import logging
 import telebot
 import requests
 from typing import Optional
 from mochi_ import MochiConnect
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, Response
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
-from telebot.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Update
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
+from telebot.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -72,10 +80,10 @@ def get_image_search_keyword(text: str) -> str:
     """Извлекает ключевое слово для поиска изображения"""
     try:
         keyword = keyword_chain.invoke({"text": text}).strip()
-        print(f"Извлечено ключевое слово для поиска: {keyword}")
+        logger.info(f"Извлечено ключевое слово для поиска: {keyword}")
         return keyword
     except Exception as e:
-        print(f"Ошибка извлечения ключевого слова: {e}")
+        logger.error(f"Ошибка извлечения ключевого слова: {e}")
         # Если не удалось извлечь, возвращаем первое слово
         return text.split()[0] if text else text
 
@@ -87,7 +95,7 @@ def get_image_url(query: str) -> Optional[str]:
         access_key = os.getenv("UNSPLASH_ACCESS_KEY")
 
         if not access_key:
-            print("UNSPLASH_ACCESS_KEY не найден в .env")
+            logger.warning("UNSPLASH_ACCESS_KEY не найден в .env")
             return None
 
         url = "https://api.unsplash.com/search/photos"
@@ -107,13 +115,13 @@ def get_image_url(query: str) -> Optional[str]:
 
         return None
     except Exception as e:
-        print(f"Ошибка получения изображения: {e}")
+        logger.error(f"Ошибка получения изображения: {e}")
         return None
 
 
 @bot.message_handler(commands=['start'])
 def start_bot(message: Message) -> None:
-    print(f"[HANDLER] start_bot called by {message.from_user.first_name}")
+    logger.info(f"start_bot called by {message.from_user.first_name}")
     welcome_text = (
         f"Привет, {message.from_user.first_name}! 👋\n\n"
         "Я бот-переводчик. Отправь мне слово или фразу:\n"
@@ -123,12 +131,12 @@ def start_bot(message: Message) -> None:
         "Просто напиши слово и отправь мне!"
     )
     bot.send_message(message.chat.id, welcome_text)
-    print(f"[HANDLER] start message sent")
+    logger.info("start message sent")
 
 
 @bot.message_handler(func=lambda message: True)
 def translate_word(message: Message) -> None:
-    print(f"[HANDLER] translate_word called for message: {message.text}")
+    logger.info(f"translate_word called for: {message.text}")
     loading_msg = None
 
     try:
@@ -164,7 +172,7 @@ def translate_word(message: Message) -> None:
 
         # Получаем изображение по ключевому слову
         image_url = get_image_url(search_keyword)
-        print(f"Получен URL изображения: {image_url}")
+        logger.info(f"Получен URL изображения: {image_url}")
 
         # Создаем кнопку для добавления в Mochi
         keyboard = InlineKeyboardMarkup()
@@ -190,13 +198,13 @@ def translate_word(message: Message) -> None:
                     reply_markup=keyboard,
                     reply_to_message_id=message.message_id
                 )
-                print("Изображение успешно отправлено")
+                logger.info("Изображение успешно отправлено")
             except Exception as img_error:
                 # Если не удалось отправить фото, отправляем только текст
-                print(f"Ошибка отправки изображения: {img_error}")
+                logger.error(f"Ошибка отправки изображения: {img_error}")
                 bot.reply_to(message, formatted_response, parse_mode='Markdown', reply_markup=keyboard)
         else:
-            print("URL изображения не получен, отправляем только текст")
+            logger.info("URL изображения не получен, отправляем только текст")
             bot.reply_to(message, formatted_response, parse_mode='Markdown', reply_markup=keyboard)
 
         # Удаляем GIF с загрузкой
@@ -204,20 +212,22 @@ def translate_word(message: Message) -> None:
             try:
                 bot.delete_message(message.chat.id, loading_msg.message_id)
             except Exception as e:
-                print(e)
+                logger.error(f"Ошибка удаления loading GIF: {e}")
 
     except Exception as e:
+        logger.error(f"Ошибка при переводе: {e}")
         # Удаляем GIF в случае ошибки
         if loading_msg:
             try:
                 bot.delete_message(message.chat.id, loading_msg.message_id)
-            except Exception as e:
-                print(e)
+            except Exception as ex:
+                logger.error(f"Ошибка удаления loading GIF: {ex}")
         bot.reply_to(message, f"Произошла ошибка при переводе: {str(e)}\nПопробуйте еще раз.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('add_mochi_'))
 def handle_add_to_mochi(call: CallbackQuery):
+    logger.info(f"handle_add_to_mochi called for: {call.data}")
     try:
         # Извлекаем message_id из callback_data
         message_id = int(call.data.split('_')[2])
@@ -284,6 +294,7 @@ def handle_add_to_mochi(call: CallbackQuery):
 
         # Проверяем, существует ли уже такая карточка
         if mochi.card_exists(deck_id, front_text):
+            logger.info(f"Карточка уже существует: {front_text}")
             bot.answer_callback_query(call.id, "⚠️ Такая карточка уже существует в Mochi!", show_alert=True)
 
             # Обновляем кнопку на статус "уже существует"
@@ -297,7 +308,7 @@ def handle_add_to_mochi(call: CallbackQuery):
                     reply_markup=exists_keyboard
                 )
             except Exception as e:
-                print(e)
+                logger.error(f"Ошибка обновления кнопки: {e}")
 
             # Удаляем данные карточки
             del user_cards[message_id]
@@ -311,6 +322,7 @@ def handle_add_to_mochi(call: CallbackQuery):
             image_url=card_data['image_url']
         )
 
+        logger.info(f"Карточка добавлена в Mochi: {front_text}")
         bot.answer_callback_query(call.id, "✅ Карточка добавлена в Mochi!", show_alert=False)
 
         # Обновляем кнопку на успешное сообщение
@@ -325,14 +337,14 @@ def handle_add_to_mochi(call: CallbackQuery):
                 reply_markup=success_keyboard
             )
         except Exception as e:
-            print(e)
+            logger.error(f"Ошибка обновления кнопки: {e}")
 
         # Удаляем данные карточки
         del user_cards[message_id]
 
     except Exception as e:
         error_msg = str(e)
-        print(f"Ошибка добавления в Mochi: {error_msg}")
+        logger.error(f"Ошибка добавления в Mochi: {error_msg}")
         bot.answer_callback_query(call.id, f"❌ Ошибка: {error_msg}", show_alert=True)
 
 
@@ -347,33 +359,28 @@ async def webhook(request: Request):
     """Обработка webhook от Telegram"""
     try:
         json_data = await request.json()
-        print(f"[WEBHOOK] Received update_id: {json_data.get('update_id')}")
+        logger.info(f"Received update_id: {json_data.get('update_id')}")
 
         # Обрабатываем сообщения напрямую
         if 'message' in json_data:
             message = telebot.types.Message.de_json(json_data['message'])
-            print(f"[WEBHOOK] Message from {message.from_user.first_name}: {message.text}")
+            logger.info(f"Message from {message.from_user.first_name}: {message.text}")
 
             # Вызываем обработчики напрямую
             if message.text and message.text.startswith('/start'):
-                print(f"[WEBHOOK] Calling start_bot")
                 start_bot(message)
             else:
-                print(f"[WEBHOOK] Calling translate_word")
                 translate_word(message)
 
         # Обрабатываем callback queries
         elif 'callback_query' in json_data:
             callback_query = telebot.types.CallbackQuery.de_json(json_data['callback_query'])
-            print(f"[WEBHOOK] Callback query: {callback_query.data}")
+            logger.info(f"Callback query: {callback_query.data}")
             handle_add_to_mochi(callback_query)
 
-        print(f"[WEBHOOK] Processing complete")
         return Response(status_code=200)
     except Exception as e:
-        print(f"[ERROR] Error in webhook: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in webhook: {e}", exc_info=True)
         return Response(status_code=500)
 
 
