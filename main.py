@@ -119,7 +119,6 @@ def get_image_url(query: str) -> Optional[str]:
         return None
 
 
-@bot.message_handler(commands=['start'])
 def start_bot(message: Message) -> None:
     logger.info(f"start_bot called by {message.from_user.first_name}")
     welcome_text = (
@@ -134,7 +133,6 @@ def start_bot(message: Message) -> None:
     logger.info("start message sent")
 
 
-@bot.message_handler(func=lambda message: True)
 def translate_word(message: Message) -> None:
     logger.info(f"translate_word called for: {message.text}")
     loading_msg = None
@@ -225,7 +223,6 @@ def translate_word(message: Message) -> None:
         bot.reply_to(message, f"Произошла ошибка при переводе: {str(e)}\nПопробуйте еще раз.")
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('add_mochi_'))
 def handle_add_to_mochi(call: CallbackQuery):
     logger.info(f"handle_add_to_mochi called for: {call.data}")
     try:
