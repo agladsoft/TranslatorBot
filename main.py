@@ -344,11 +344,16 @@ async def webhook(request: Request):
     """Обработка webhook от Telegram"""
     try:
         json_data = await request.json()
+        print(f"[WEBHOOK] Received data: {json_data}")
         update = telebot.types.Update.de_json(json_data)
+        print(f"[WEBHOOK] Processing update: {update}")
         bot.process_new_updates([update])
+        print(f"[WEBHOOK] Update processed successfully")
         return Response(status_code=200)
     except Exception as e:
-        print(f"Error processing webhook: {e}")
+        print(f"[ERROR] Error processing webhook: {e}")
+        import traceback
+        traceback.print_exc()
         return Response(status_code=500)
 
 
