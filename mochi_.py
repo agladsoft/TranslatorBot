@@ -1,8 +1,11 @@
 import uuid
+import logging
 import requests
 from mochi.auth import Auth
 from typing import Optional
 from mochi.client import Mochi
+
+logger = logging.getLogger(__name__)
 
 
 class MochiConnect:
@@ -11,7 +14,7 @@ class MochiConnect:
     def __init__(self, api_key: str):
         self.api_key = api_key
         auth = Auth.Token(api_key)
-        self.client = Mochi(auth=auth)
+        self.client = Mochi(auth=auth) # type: ignore
 
     def get_basic_template(self) -> Optional[dict]:
         """Получает шаблон Basic (с полями Front и Back)"""
@@ -23,18 +26,18 @@ class MochiConnect:
                 if template.get('name') and 'basic' in template['name'].lower():
                     # Получаем полную информацию о шаблоне
                     full_template = self.client.templates.get_template(template['id'])
-                    print(f"Найден шаблон Basic: {full_template}")
+                    logger.info(f"Найден шаблон Basic: {full_template}")
                     return full_template
 
             # Если не нашли Basic, возвращаем первый шаблон (если есть)
             if templates and len(templates) > 0:
                 full_template = self.client.templates.get_template(templates[0]['id'])
-                print(f"Используем первый шаблон: {full_template}")
+                logger.info(f"Используем первый шаблон: {full_template}")
                 return full_template
 
             return None
         except Exception as e:
-            print(f"Ошибка получения шаблонов: {e}")
+            logger.error(f"Ошибка получения шаблонов: {e}")
             return None
 
     def get_or_create_deck(self, deck_name: str) -> str:
@@ -68,19 +71,19 @@ class MochiConnect:
                     field_value = field_data.get('value', '')
                     normalized_field = field_value.replace('#', '').strip().lower()
                     if normalized_search in normalized_field or normalized_field in normalized_search:
-                        print(f"Найдена существующая карточка: {card.get('id')}")
+                        logger.info(f"Найдена существующая карточка: {card.get('id')}")
                         return True
 
                 # Также проверяем content для карточек без шаблона
                 content = card.get('content', '')
                 normalized_content = content.replace('#', '').strip().lower()
                 if normalized_search in normalized_content:
-                    print(f"Найдена существующая карточка (по content): {card.get('id')}")
+                    logger.info(f"Найдена существующая карточка (по content): {card.get('id')}")
                     return True
 
             return False
         except Exception as e:
-            print(f"Ошибка проверки дубликатов: {e}")
+            logger.error(f"Ошибка проверки дубликатов: {e}")
             # В случае ошибки разрешаем создание карточки
             return False
 
@@ -104,10 +107,10 @@ class MochiConnect:
             response.raise_for_status()
             return True
         except Exception as e:
-            print(f"Ошибка загрузки вложения: {e}")
+            logger.error(f"Ошибка загрузки вложения: {e}")
             if hasattr(e, 'response'):
-                print(f"Response status: {e.response.status_code}")
-                print(f"Response body: {e.response.text}")
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
             return False
 
     def add_card(self, deck_id: str, front_text: str, back_text: str, image_url: Optional[str] = None) -> dict:
@@ -125,7 +128,7 @@ class MochiConnect:
 
             # Получаем ID полей из шаблона
             fields_info = template.get('fields', {})
-            print(f"Поля шаблона: {fields_info}")
+            logger.info(f"Поля шаблона: {fields_info}")
 
             # Ищем ID полей "front" и "back" (или похожие)
             for field_id, field_data in fields_info.items():
@@ -135,7 +138,7 @@ class MochiConnect:
                 elif 'back' in field_name:
                     back_field_id = field_id
 
-            print(f"Front field ID: {front_field_id}, Back field ID: {back_field_id}")
+            logger.info(f"Front field ID: {front_field_id}, Back field ID: {back_field_id}")
 
             # Формируем поля карточки
             card_fields = {}
@@ -151,7 +154,7 @@ class MochiConnect:
                 }
 
             # Создаем карточку с полями
-            print(f"Создание карточки с полями: {card_fields}")
+            logger.info(f"Создание карточки с полями: {card_fields}")
             try:
                 card = self.client.cards.create_card(
                     content="",  # content не используется при работе с полями
@@ -159,17 +162,17 @@ class MochiConnect:
                     template_id=template_id,
                     fields=card_fields
                 )
-                print(f"Карточка успешно создана с ID: {card.get('id')}")
-                print(f"Полный ответ: {card}")
+                logger.info(f"Карточка успешно создана с ID: {card.get('id')}")
+                logger.debug(f"Полный ответ: {card}")
             except Exception as e:
-                print(f"Ошибка создания карточки с полями: {e}")
+                logger.error(f"Ошибка создания карточки с полями: {e}")
                 raise
         else:
             # Если шаблон не найден, создаем обычную карточку
             content = f"{front_text}\n---\n{back_text}"
-            print(f"Создание карточки без шаблона с контентом: {content}")
+            logger.info(f"Создание карточки без шаблона с контентом: {content}")
             card = self.client.cards.create_card(content=content, deck_id=deck_id)
-            print(f"Карточка создана: {card.get('id')}")
+            logger.info(f"Карточка создана: {card.get('id')}")
 
         # Если есть изображение, загружаем его как вложение
         if image_url and card:
@@ -195,17 +198,17 @@ class MochiConnect:
                             updated_fields[front_field_id]['value'] = updated_front
 
                         self.client.cards.update_card(card_id=card_id, fields=updated_fields)
-                        print(f"Изображение успешно добавлено в front: {filename}")
+                        logger.info(f"Изображение успешно добавлено в front: {filename}")
                     else:
                         # Для карточек без шаблона обновляем content
                         current_card = self.client.cards.get_card(card_id)
                         current_content = current_card.get('content', '')
                         updated_content = f"![](@media/{filename})\n\n{current_content}"
                         self.client.cards.update_card(card_id=card_id, content=updated_content)
-                        print(f"Изображение успешно добавлено: {filename}")
+                        logger.info(f"Изображение успешно добавлено: {filename}")
 
             except Exception as e:
-                print(f"Ошибка добавления изображения: {e}")
+                logger.error(f"Ошибка добавления изображения: {e}")
 
         return card
 
@@ -215,7 +218,7 @@ class MochiConnect:
             self.client.decks.list_decks()
             return True
         except Exception as e:
-            print(f"Ошибка подключения к Mochi: {e}")
+            logger.error(f"Ошибка подключения к Mochi: {e}")
             return False
 
     def close(self):
