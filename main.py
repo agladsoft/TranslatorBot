@@ -126,6 +126,7 @@ def start_bot(message: Message) -> None:
 
 @bot.message_handler(func=lambda message: True)
 def translate_word(message: Message) -> None:
+    print(f"[HANDLER] translate_word called for message: {message.text}")
     loading_msg = None
 
     try:
@@ -343,12 +344,28 @@ async def root():
 async def webhook(request: Request):
     """Обработка webhook от Telegram"""
     try:
+        import threading
+
         json_data = await request.json()
         print(f"[WEBHOOK] Received data: {json_data}")
         update = telebot.types.Update.de_json(json_data)
         print(f"[WEBHOOK] Processing update: {update}")
-        bot.process_new_updates([update])
-        print(f"[WEBHOOK] Update processed successfully")
+
+        # Запускаем обработку в отдельном потоке
+        def process_update():
+            try:
+                print(f"[THREAD] Starting to process update")
+                bot.process_new_updates([update])
+                print(f"[THREAD] Update processed successfully")
+            except Exception as e:
+                print(f"[THREAD ERROR] {e}")
+                import traceback
+                traceback.print_exc()
+
+        thread = threading.Thread(target=process_update)
+        thread.start()
+
+        print(f"[WEBHOOK] Update sent to processing thread")
         return Response(status_code=200)
     except Exception as e:
         print(f"[ERROR] Error processing webhook: {e}")
