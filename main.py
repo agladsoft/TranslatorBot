@@ -349,17 +349,26 @@ async def webhook(request: Request):
         json_data = await request.json()
         print(f"[WEBHOOK] Received update_id: {json_data.get('update_id')}")
 
+        # Обрабатываем сообщения напрямую
         if 'message' in json_data:
-            msg = json_data['message']
-            print(f"[WEBHOOK] Message from {msg.get('from', {}).get('first_name')}: {msg.get('text')}")
+            message = telebot.types.Message.de_json(json_data['message'])
+            print(f"[WEBHOOK] Message from {message.from_user.first_name}: {message.text}")
 
-        update = telebot.types.Update.de_json(json_data)
-        print(f"[WEBHOOK] Update deserialized, calling process_new_updates")
+            # Вызываем обработчики напрямую
+            if message.text and message.text.startswith('/start'):
+                print(f"[WEBHOOK] Calling start_bot")
+                start_bot(message)
+            else:
+                print(f"[WEBHOOK] Calling translate_word")
+                translate_word(message)
 
-        # Обрабатываем синхронно
-        bot.process_new_updates([update])
+        # Обрабатываем callback queries
+        elif 'callback_query' in json_data:
+            callback_query = telebot.types.CallbackQuery.de_json(json_data['callback_query'])
+            print(f"[WEBHOOK] Callback query: {callback_query.data}")
+            handle_add_to_mochi(callback_query)
 
-        print(f"[WEBHOOK] Update processed")
+        print(f"[WEBHOOK] Processing complete")
         return Response(status_code=200)
     except Exception as e:
         print(f"[ERROR] Error in webhook: {e}")
