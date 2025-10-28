@@ -113,6 +113,7 @@ def get_image_url(query: str) -> Optional[str]:
 
 @bot.message_handler(commands=['start'])
 def start_bot(message: Message) -> None:
+    print(f"[HANDLER] start_bot called by {message.from_user.first_name}")
     welcome_text = (
         f"Привет, {message.from_user.first_name}! 👋\n\n"
         "Я бот-переводчик. Отправь мне слово или фразу:\n"
@@ -122,6 +123,7 @@ def start_bot(message: Message) -> None:
         "Просто напиши слово и отправь мне!"
     )
     bot.send_message(message.chat.id, welcome_text)
+    print(f"[HANDLER] start message sent")
 
 
 @bot.message_handler(func=lambda message: True)
@@ -344,31 +346,23 @@ async def root():
 async def webhook(request: Request):
     """Обработка webhook от Telegram"""
     try:
-        import threading
-
         json_data = await request.json()
-        print(f"[WEBHOOK] Received data: {json_data}")
+        print(f"[WEBHOOK] Received update_id: {json_data.get('update_id')}")
+
+        if 'message' in json_data:
+            msg = json_data['message']
+            print(f"[WEBHOOK] Message from {msg.get('from', {}).get('first_name')}: {msg.get('text')}")
+
         update = telebot.types.Update.de_json(json_data)
-        print(f"[WEBHOOK] Processing update: {update}")
+        print(f"[WEBHOOK] Update deserialized, calling process_new_updates")
 
-        # Запускаем обработку в отдельном потоке
-        def process_update():
-            try:
-                print(f"[THREAD] Starting to process update")
-                bot.process_new_updates([update])
-                print(f"[THREAD] Update processed successfully")
-            except Exception as e:
-                print(f"[THREAD ERROR] {e}")
-                import traceback
-                traceback.print_exc()
+        # Обрабатываем синхронно
+        bot.process_new_updates([update])
 
-        thread = threading.Thread(target=process_update)
-        thread.start()
-
-        print(f"[WEBHOOK] Update sent to processing thread")
+        print(f"[WEBHOOK] Update processed")
         return Response(status_code=200)
     except Exception as e:
-        print(f"[ERROR] Error processing webhook: {e}")
+        print(f"[ERROR] Error in webhook: {e}")
         import traceback
         traceback.print_exc()
         return Response(status_code=500)
